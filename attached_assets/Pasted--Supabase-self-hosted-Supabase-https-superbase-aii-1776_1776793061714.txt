@@ -1,0 +1,75 @@
+Как подключить проект к Supabase
+
+В проекте используется self-hosted Supabase: https://superbase.aiinvestor360.ru
+Шаг 1: Получить ключи и URL
+
+Зайди в панель Supabase (https://superbase.aiinvestor360.ru) → Project Settings:
+
+    API → Project URL → это SUPABASE_URL
+    Пример: https://superbase.aiinvestor360.ru
+
+    API → Project API keys → anon public → это SUPABASE_ANON_KEY
+
+    API → Project API keys → service_role secret → это SUPABASE_SERVICE_ROLE_KEY
+    ⚠️ Только для сервера, не светить на фронте
+
+    Database → Connection string → URI → это SUPABASE_DB_URL
+    Формат: postgresql://postgres:ПАРОЛЬ@db.superbase.aiinvestor360.ru:5432/postgres
+    Замени [YOUR-PASSWORD] на реальный пароль БД.
+
+Шаг 2: Добавить как секреты в Replit
+
+Открой Secrets (🔒) и добавь 4 секрета с этими именно именами:
+
+SUPABASE_URL                 = https://superbase.aiinvestor360.ru
+SUPABASE_ANON_KEY            = eyJhbGciOi... (anon key)
+SUPABASE_SERVICE_ROLE_KEY    = eyJhbGciOi... (service_role key)
+SUPABASE_DB_URL              = postgresql://postgres:ПАРОЛЬ@db.superbase.aiinvestor360.ru:5432/postgres
+
+Шаг 3: Установить пакет (если ещё нет)
+
+npm install @supabase/supabase-js
+
+Шаг 4: Использовать в коде
+
+Сервер (server/storage.ts или подобное):
+
+import { createClient } from "@supabase/supabase-js";
+export const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
+Drizzle (drizzle.config.ts):
+
+import { defineConfig } from "drizzle-kit";
+export default defineConfig({
+  out: "./migrations",
+  schema: "./shared/schema.ts",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.SUPABASE_DB_URL!,
+    ssl: "require",
+  },
+});
+
+Шаг 5: Перезапустить и применить схему
+
+npm run db:push --force
+
+Должно подтянуть все таблицы в Supabase без ошибок. Потом перезапусти workflow.
+Важно
+
+    ❌ НЕ создавай Replit PostgreSQL — никаких DATABASE_URL, PGHOST, createDatabase(). Используется ТОЛЬКО Supabase.
+    ❌ Не путай SUPABASE_URL (REST, для JS-клиента) и SUPABASE_DB_URL (Postgres, для Drizzle) — это разные строки.
+    ✅ Если получаешь Tenant or user not found — значит хост в SUPABASE_DB_URL неправильный, нужен именно db.<домен>:5432, а не сам REST URL.
+    ✅ Если получаешь Invalid API key — перепутаны anon и service_role, или ключ скопирован не полностью.
+
+Проверка что всё подключилось
+
+curl -X POST $SUPABASE_URL/rest/v1/rpc/version \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+
+Должен прийти JSON, а не ошибка 401.

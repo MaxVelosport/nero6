@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /tasks
+Disallow: /profile
+Disallow: /settings
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://neurozachet.ru/sitemap.xml

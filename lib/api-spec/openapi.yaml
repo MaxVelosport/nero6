@@ -1,0 +1,785 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: SolveHub API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: users
+    description: User profile operations
+  - name: tasks
+    description: Academic task operations
+  - name: pricing
+    description: Pricing and plans
+  - name: stats
+    description: Statistics and analytics
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBody"
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Logged in successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current user
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/profile:
+    get:
+      operationId: getProfile
+      tags: [users]
+      summary: Get user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProfile
+      tags: [users]
+      summary: Update user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileBody"
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/balance:
+    get:
+      operationId: getBalance
+      tags: [users]
+      summary: Get user balance and transaction history
+      responses:
+        "200":
+          description: User balance info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalanceInfo"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List user's tasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, processing, completed, failed]
+        - name: subject
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: number
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 10
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskList"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a new task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tasks/{taskId}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get task details
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tasks/estimate:
+    post:
+      operationId: estimateTask
+      tags: [tasks]
+      summary: Estimate cost and time for a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EstimateTaskBody"
+      responses:
+        "200":
+          description: Task estimation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskEstimate"
+
+  /pricing/plans:
+    get:
+      operationId: getPricingPlans
+      tags: [pricing]
+      summary: Get all pricing plans
+      responses:
+        "200":
+          description: List of plans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingPlans"
+
+  /stats/dashboard:
+    get:
+      operationId: getDashboardStats
+      tags: [stats]
+      summary: Get dashboard statistics for current user
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stats/subjects:
+    get:
+      operationId: getSubjectStats
+      tags: [stats]
+      summary: Get task statistics by subject
+      responses:
+        "200":
+          description: Subject breakdown stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubjectStat"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    RegisterBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        educationLevel:
+          type: string
+          enum: [school, bachelor, master, phd, other]
+      required:
+        - name
+        - email
+        - password
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required:
+        - user
+        - token
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        educationLevel:
+          type: string
+          enum: [school, bachelor, master, phd, other]
+        balance:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - balance
+        - createdAt
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        educationLevel:
+          type: string
+          enum: [school, bachelor, master, phd, other]
+        institution:
+          type: string
+        specialty:
+          type: string
+        balance:
+          type: number
+        totalTasksCount:
+          type: number
+        completedTasksCount:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - balance
+        - totalTasksCount
+        - completedTasksCount
+        - createdAt
+
+    UpdateProfileBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        educationLevel:
+          type: string
+          enum: [school, bachelor, master, phd, other]
+        institution:
+          type: string
+        specialty:
+          type: string
+
+    BalanceInfo:
+      type: object
+      properties:
+        balance:
+          type: number
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+      required:
+        - balance
+        - transactions
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [topup, payment, refund]
+        amount:
+          type: number
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - amount
+        - description
+        - createdAt
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        subject:
+          type: string
+        taskType:
+          type: string
+          enum: [homework, test, coursework, lab, essay, diploma, other]
+        educationLevel:
+          type: string
+          enum: [school, bachelor, master, phd, other]
+        solvingMode:
+          type: string
+          enum: [fast, standard, premium]
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        complexityScore:
+          type: number
+        estimatedCost:
+          type: number
+        actualCost:
+          type: number
+        estimatedTime:
+          type: number
+        result:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - subject
+        - taskType
+        - solvingMode
+        - status
+        - estimatedCost
+        - createdAt
+
+    TaskList:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        total:
+          type: number
+        page:
+          type: number
+        limit:
+          type: number
+      required:
+        - tasks
+        - total
+        - page
+        - limit
+
+    CreateTaskBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        subject:
+          type: string
+        taskType:
+          type: string
+          enum: [homework, test, coursework, lab, essay, diploma, other]
+        educationLevel:
+          type: string
+          enum: [school, bachelor, master, phd, other]
+        solvingMode:
+          type: string
+          enum: [fast, standard, premium]
+      required:
+        - title
+        - description
+        - subject
+        - taskType
+        - solvingMode
+
+    EstimateTaskBody:
+      type: object
+      properties:
+        description:
+          type: string
+        subject:
+          type: string
+        taskType:
+          type: string
+          enum: [homework, test, coursework, lab, essay, diploma, other]
+        educationLevel:
+          type: string
+          enum: [school, bachelor, master, phd, other]
+      required:
+        - description
+        - subject
+        - taskType
+
+    TaskEstimate:
+      type: object
+      properties:
+        complexityScore:
+          type: number
+        subject:
+          type: string
+        taskType:
+          type: string
+        educationLevel:
+          type: string
+        recommendedMode:
+          type: string
+          enum: [fast, standard, premium]
+        modes:
+          type: object
+          properties:
+            fast:
+              $ref: "#/components/schemas/ModeEstimate"
+            standard:
+              $ref: "#/components/schemas/ModeEstimate"
+            premium:
+              $ref: "#/components/schemas/ModeEstimate"
+          required:
+            - fast
+            - standard
+            - premium
+      required:
+        - complexityScore
+        - subject
+        - taskType
+        - recommendedMode
+        - modes
+
+    ModeEstimate:
+      type: object
+      properties:
+        cost:
+          type: number
+        timeMinutes:
+          type: number
+        description:
+          type: string
+      required:
+        - cost
+        - timeMinutes
+        - description
+
+    PricingPlans:
+      type: object
+      properties:
+        fast:
+          $ref: "#/components/schemas/PricingPlan"
+        standard:
+          $ref: "#/components/schemas/PricingPlan"
+        premium:
+          $ref: "#/components/schemas/PricingPlan"
+      required:
+        - fast
+        - standard
+        - premium
+
+    PricingPlan:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        priceFrom:
+          type: number
+        timeFrom:
+          type: number
+        timeTo:
+          type: number
+        models:
+          type: array
+          items:
+            type: string
+        features:
+          type: array
+          items:
+            type: string
+        recommended:
+          type: boolean
+      required:
+        - name
+        - description
+        - priceFrom
+        - timeFrom
+        - timeTo
+        - models
+        - features
+
+    DashboardStats:
+      type: object
+      properties:
+        totalTasks:
+          type: number
+        completedTasks:
+          type: number
+        pendingTasks:
+          type: number
+        processingTasks:
+          type: number
+        failedTasks:
+          type: number
+        totalSpent:
+          type: number
+        balance:
+          type: number
+        recentTasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        averageComplexity:
+          type: number
+        successRate:
+          type: number
+      required:
+        - totalTasks
+        - completedTasks
+        - pendingTasks
+        - processingTasks
+        - failedTasks
+        - totalSpent
+        - balance
+        - recentTasks
+        - averageComplexity
+        - successRate
+
+    SubjectStat:
+      type: object
+      properties:
+        subject:
+          type: string
+        count:
+          type: number
+        avgComplexity:
+          type: number
+      required:
+        - subject
+        - count
+        - avgComplexity
