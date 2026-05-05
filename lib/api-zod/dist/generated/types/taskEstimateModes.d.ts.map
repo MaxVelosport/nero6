@@ -1,0 +1,1 @@
+{"version":3,"file":"taskEstimateModes.d.ts","sourceRoot":"","sources":["../../../src/generated/types/taskEstimateModes.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,OAAO,KAAK,EAAE,YAAY,EAAE,MAAM,gBAAgB,CAAC;AAEnD,MAAM,MAAM,iBAAiB,GAAG;IAC9B,IAAI,EAAE,YAAY,CAAC;IACnB,QAAQ,EAAE,YAAY,CAAC;IACvB,OAAO,EAAE,YAAY,CAAC;CACvB,CAAC"}

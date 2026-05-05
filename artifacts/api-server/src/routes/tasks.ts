@@ -220,7 +220,7 @@ router.post("/estimate", async (req, res) => {
     let recommendedMode = "standard";
     if (complexity <= 3 && !isMulti) recommendedMode = "fast";
     else if (complexity >= 8 || (isMulti && sections >= 10)) recommendedMode = "super_premium";
-    else if (complexity >= 5 || isMulti) recommendedMode = "premium";
+    else if (complexity >= 7 || isMulti) recommendedMode = "premium";
 
     const modeDesc = isMulti
       ? { suffix: "синтезирует каждый раздел" }
@@ -455,9 +455,10 @@ router.post("/generate-image", requireAuth, async (req, res) => {
 
       let imageUrl = dalleUrl;
       try {
-        const objectPath = await saveImageFromUrl(dalleUrl, "illustrations");
-        imageUrl = `/api/storage${objectPath}`;
-      } catch { }
+        imageUrl = await saveImageFromUrl(dalleUrl, "illustrations");
+      } catch (saveErr) {
+        console.error("[generate-image] saveImageFromUrl failed:", saveErr);
+      }
 
       res.json({ url: imageUrl, cost: charge.cost });
     } catch (aiErr: any) {
@@ -631,6 +632,7 @@ router.post("/:taskId/request-manual", requireAuth, async (req, res) => {
     const taskId = parseInt(req.params.taskId, 10);
     if (isNaN(taskId)) { res.status(400).json({ error: "validation_error", message: "Invalid task ID" }); return; }
     const user = (req as any).user;
+    const sb = getSupabaseAdmin();
 
     let task: any = null;
     if (sb) {

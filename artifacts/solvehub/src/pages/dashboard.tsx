@@ -371,7 +371,7 @@ export default function DashboardPage() {
     <div className="space-y-8 animate-in fade-in duration-500">
 
       {/* ── Email banner ── */}
-      {user && !user.email_verified && !emailBannerDismissed && (
+      {user && !user.emailVerified && !emailBannerDismissed && (
         <EmailVerificationBanner email={user.email} onDismiss={dismissEmailBanner} />
       )}
 

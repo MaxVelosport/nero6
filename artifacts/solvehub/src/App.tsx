@@ -69,6 +69,7 @@ const PROTECTED_PREFIXES = [
 ];
 
 function isProtectedPath(path: string) {
+  if (path.startsWith("/tasks/shared")) return false;
   return PROTECTED_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
 }
 

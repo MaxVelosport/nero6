@@ -1,40 +1,45 @@
 import { randomUUID } from "crypto";
-import { objectStorageClient } from "./objectStorage.js";
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
+import { fetch as undiciFetch, ProxyAgent } from "undici";
 
-function parseGcsPath(fullPath: string): { bucketName: string; objectName: string } {
-  if (fullPath.startsWith("gs://")) {
-    const withoutScheme = fullPath.slice(5);
-    const slashIdx = withoutScheme.indexOf("/");
-    return {
-      bucketName: withoutScheme.slice(0, slashIdx),
-      objectName: withoutScheme.slice(slashIdx + 1),
-    };
-  }
-  throw new Error(`Invalid GCS path: ${fullPath}`);
-}
+const UPLOADS_DIR = process.env.UPLOADS_DIR ?? "/home/deploy/data/uploads";
 
 export async function saveImageFromUrl(
   imageUrl: string,
   subdir: string = "illustrations"
 ): Promise<string> {
-  const privateObjectDir = process.env.PRIVATE_OBJECT_DIR;
-  if (!privateObjectDir) throw new Error("PRIVATE_OBJECT_DIR not set");
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+  const dispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined;
 
-  const resp = await fetch(imageUrl);
-  if (!resp.ok) throw new Error(`Failed to download image: ${resp.status}`);
+  let resp: Awaited<ReturnType<typeof undiciFetch>>;
+  try {
+    resp = await undiciFetch(imageUrl, { dispatcher } as any);
+  } catch (fetchErr) {
+    console.error(`[imageSave] fetch failed for ${imageUrl}:`, fetchErr);
+    throw fetchErr;
+  }
+
+  if (!resp.ok) {
+    const msg = `[imageSave] HTTP ${resp.status} downloading ${imageUrl}`;
+    console.error(msg);
+    throw new Error(msg);
+  }
+
   const buffer = Buffer.from(await resp.arrayBuffer());
 
-  const objectId = randomUUID();
-  const fullPath = `${privateObjectDir}/${subdir}/${objectId}.png`;
-  const { bucketName, objectName } = parseGcsPath(fullPath);
+  const dir = path.join(UPLOADS_DIR, subdir);
+  await mkdir(dir, { recursive: true });
 
-  const bucket = objectStorageClient.bucket(bucketName);
-  const file = bucket.file(objectName);
+  const filename = `${randomUUID()}.png`;
+  const filePath = path.join(dir, filename);
+  try {
+    await writeFile(filePath, buffer);
+  } catch (writeErr) {
+    console.error(`[imageSave] writeFile failed at ${filePath}:`, writeErr);
+    throw writeErr;
+  }
 
-  await file.save(buffer, {
-    contentType: "image/png",
-    metadata: { cacheControl: "public, max-age=31536000" },
-  });
-
-  return `/objects/${subdir}/${objectId}.png`;
+  console.log(`[imageSave] saved ${buffer.length} bytes → ${filePath}`);
+  return `/uploads/${subdir}/${filename}`;
 }

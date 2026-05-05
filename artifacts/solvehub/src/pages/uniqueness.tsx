@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import katex from "katex";
+import { RenderMessage } from "@/lib/render-message";
 import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/lib/theme";
@@ -369,31 +371,73 @@ export default function UniquenessPage() {
     URL.revokeObjectURL(url);
   }
 
-  // Highlight issues in original text by escaping and wrapping matched substrings.
+  // Highlight issues in original text. LaTeX regions are rendered via katex.renderToString()
+  // synchronously so they are never split by <mark> spans and never need a DOM post-pass.
   const highlightedText = useMemo(() => {
     if (!check || !text) return null;
     const escapeHtml = (s: string) => s.replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch] as string));
-    const ranges: { start: number; end: number; idx: number; severity: Issue["severity"] }[] = [];
+
+    // 1. Find all LaTeX regions (atomic — never split by marks)
+    type MathRegion = { start: number; end: number; formula: string; display: boolean };
+    const mathRegions: MathRegion[] = [];
+    const mathPatterns: [RegExp, boolean, number][] = [
+      [/\$\$[\s\S]+?\$\$/g,     true,  2],
+      [/\$[^$\n]+?\$/g,         false, 1],
+      [/\\\[[\s\S]+?\\\]/g,     true,  2],
+      [/\\\([\s\S]+?\\\)/g,     false, 2],
+    ];
+    for (const [re, display, delim] of mathPatterns) {
+      for (const m of text.matchAll(re)) {
+        mathRegions.push({ start: m.index!, end: m.index! + m[0].length, formula: m[0].slice(delim, -delim), display });
+      }
+    }
+    mathRegions.sort((a, b) => a.start - b.start);
+    const filteredMath: MathRegion[] = [];
+    for (const r of mathRegions) {
+      if (filteredMath.length === 0 || r.start >= filteredMath[filteredMath.length - 1].end) filteredMath.push(r);
+    }
+
+    // 2. Build issue highlight ranges — skip any that overlap a math region
+    type MarkRegion = { start: number; end: number; idx: number; severity: Issue["severity"] };
+    const markRanges: MarkRegion[] = [];
     check.issues.forEach((iss, idx) => {
       const q = iss.quote.trim();
       if (q.length < 8) return;
       const i = text.indexOf(q);
-      if (i >= 0) ranges.push({ start: i, end: i + q.length, idx, severity: iss.severity });
+      if (i < 0) return;
+      const end = i + q.length;
+      if (filteredMath.some(m => i < m.end && end > m.start)) return;
+      markRanges.push({ start: i, end, idx, severity: iss.severity });
     });
-    ranges.sort((a, b) => a.start - b.start);
-    // Drop overlaps (keep earlier)
-    const filtered: typeof ranges = [];
-    for (const r of ranges) {
-      if (filtered.length === 0 || r.start >= filtered[filtered.length - 1].end) filtered.push(r);
+    markRanges.sort((a, b) => a.start - b.start);
+    const filteredMarks: MarkRegion[] = [];
+    for (const r of markRanges) {
+      if (filteredMarks.length === 0 || r.start >= filteredMarks[filteredMarks.length - 1].end) filteredMarks.push(r);
     }
+
+    // 3. Merge and sort all regions, then build HTML
+    type Seg = ({ kind: "math" } & MathRegion) | ({ kind: "mark" } & MarkRegion);
+    const segs: Seg[] = [
+      ...filteredMath.map(r => ({ kind: "math" as const, ...r })),
+      ...filteredMarks.map(r => ({ kind: "mark" as const, ...r })),
+    ].sort((a, b) => a.start - b.start);
+
     let out = "";
     let pos = 0;
-    for (const r of filtered) {
-      out += escapeHtml(text.slice(pos, r.start));
-      const cls = r.severity === "high" ? "bg-red-500/25 text-red-200" : r.severity === "medium" ? "bg-amber-500/25 text-amber-200" : "bg-slate-500/20";
-      const clsLight = r.severity === "high" ? "bg-red-200/70 text-red-900" : r.severity === "medium" ? "bg-amber-200/70 text-amber-900" : "bg-slate-200/70";
-      out += `<mark data-idx="${r.idx}" class="${isLight ? clsLight : cls} rounded px-0.5 cursor-pointer transition-all ${activeIssueIdx === r.idx ? "ring-2 ring-primary" : ""}">${escapeHtml(text.slice(r.start, r.end))}</mark>`;
-      pos = r.end;
+    for (const seg of segs) {
+      if (seg.start > pos) out += escapeHtml(text.slice(pos, seg.start));
+      if (seg.kind === "math") {
+        try {
+          out += katex.renderToString(seg.formula, { displayMode: seg.display, throwOnError: false, strict: false, output: "htmlAndMathml" });
+        } catch {
+          out += escapeHtml(text.slice(seg.start, seg.end));
+        }
+      } else {
+        const cls = seg.severity === "high" ? "bg-red-500/25 text-red-200" : seg.severity === "medium" ? "bg-amber-500/25 text-amber-200" : "bg-slate-500/20";
+        const clsLight = seg.severity === "high" ? "bg-red-200/70 text-red-900" : seg.severity === "medium" ? "bg-amber-200/70 text-amber-900" : "bg-slate-200/70";
+        out += `<mark data-idx="${seg.idx}" class="${isLight ? clsLight : cls} rounded px-0.5 cursor-pointer transition-all ${activeIssueIdx === seg.idx ? "ring-2 ring-primary" : ""}">${escapeHtml(text.slice(seg.start, seg.end))}</mark>`;
+      }
+      pos = seg.end;
     }
     out += escapeHtml(text.slice(pos));
     return out;
@@ -878,19 +922,23 @@ function RewriteCompare({ original, rewritten, isLight }: { original: string; re
       </div>
 
       {view === "result" && (
-        <div className={`p-4 rounded-xl border text-sm leading-relaxed whitespace-pre-wrap max-h-[600px] overflow-y-auto ${box}`}>
-          {rewritten}
+        <div className={`p-4 rounded-xl border text-sm leading-relaxed max-h-[600px] overflow-y-auto ${box}`}>
+          <RenderMessage content={rewritten} />
         </div>
       )}
       {view === "side" && (
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <div className="text-xs font-semibold mb-1 opacity-60">ОРИГИНАЛ</div>
-            <div className={`p-3 rounded-xl border text-xs leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto ${box}`}>{original}</div>
+            <div className={`p-3 rounded-xl border text-xs leading-relaxed max-h-[500px] overflow-y-auto ${box}`}>
+              <RenderMessage content={original} />
+            </div>
           </div>
           <div>
             <div className="text-xs font-semibold mb-1 opacity-60">УНИКАЛИЗИРОВАННЫЙ</div>
-            <div className={`p-3 rounded-xl border text-xs leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto ${box}`}>{rewritten}</div>
+            <div className={`p-3 rounded-xl border text-xs leading-relaxed max-h-[500px] overflow-y-auto ${box}`}>
+              <RenderMessage content={rewritten} />
+            </div>
           </div>
         </div>
       )}

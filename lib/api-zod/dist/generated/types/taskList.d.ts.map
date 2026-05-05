@@ -1,0 +1,1 @@
+{"version":3,"file":"taskList.d.ts","sourceRoot":"","sources":["../../../src/generated/types/taskList.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,OAAO,KAAK,EAAE,IAAI,EAAE,MAAM,QAAQ,CAAC;AAEnC,MAAM,WAAW,QAAQ;IACvB,KAAK,EAAE,IAAI,EAAE,CAAC;IACd,KAAK,EAAE,MAAM,CAAC;IACd,IAAI,EAAE,MAAM,CAAC;IACb,KAAK,EAAE,MAAM,CAAC;CACf"}

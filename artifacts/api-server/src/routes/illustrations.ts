@@ -5,9 +5,9 @@ import { saveImageFromUrl } from "../lib/imageSave.js";
 
 async function persistImage(dalleUrl: string): Promise<string> {
   try {
-    const objectPath = await saveImageFromUrl(dalleUrl, "illustrations");
-    return `/api/storage${objectPath}`;
-  } catch {
+    return await saveImageFromUrl(dalleUrl, "illustrations");
+  } catch (saveErr) {
+    console.error("[illustrations] persistImage failed, falling back to DALL-E URL:", saveErr);
     return dalleUrl;
   }
 }

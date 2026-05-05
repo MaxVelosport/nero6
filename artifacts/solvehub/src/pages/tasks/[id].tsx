@@ -113,19 +113,19 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
     if (task.status === "completed") { setSolveProgress(100); return; }
     if (task.status !== "pending" && task.status !== "processing") return;
 
-    // Ожидаемое время в секундах по режиму
+    // Ожидаемое время в секундах по режиму (с запасом, чтобы бар не застревал)
     const expectedSec: Record<string, number> = {
-      fast: 90, standard: 180, premium: 360, super_premium: 540,
+      fast: 100, standard: 220, premium: 420, super_premium: 600,
     };
-    const total = expectedSec[task.solvingMode] ?? 180;
+    const total = expectedSec[task.solvingMode] ?? 220;
 
     const startTime = task.createdAt ? new Date(task.createdAt).getTime() : Date.now();
 
     const tick = () => {
       const elapsed = (Date.now() - startTime) / 1000;
-      // Логистическая кривая: быстро растёт до ~85%, потом замедляется
+      // Логистическая кривая: медленнее растёт, кап 88% — дальше спиннер вместо числа
       const raw = elapsed / total;
-      const p = Math.min(95, Math.round(100 * (1 - Math.exp(-2.5 * raw))));
+      const p = Math.min(88, Math.round(100 * (1 - Math.exp(-2.0 * raw))));
       setSolveProgress(p);
     };
     tick();
@@ -261,6 +261,20 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const handleDownloadImage = async (url: string, filename: string) => {
+    try {
+      const resp = await fetch(url);
+      const blob = await resp.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      window.open(url, "_blank");
+    }
+  };
+
   const hasSlides = task?.result ? /===\s*СЛАЙД\s*\d+/i.test(task.result) : false;
 
   const handleExportPptx = async () => {
@@ -301,10 +315,10 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
   const getSolveStage = (p: number, mode: string) => {
     const stages = [
       { from: 0,  icon: Cpu,      label: "Подготовка и анализ задания..." },
-      { from: 15, icon: Zap,      label: "ИИ-воркеры параллельно решают..." },
-      { from: 45, icon: Brain,    label: "Синтезатор обрабатывает ответы..." },
-      { from: 75, icon: GitMerge, label: "Финальная проверка и форматирование..." },
-      { from: 92, icon: Sparkles, label: "Завершение..." },
+      { from: 20, icon: Zap,      label: "ИИ-воркеры параллельно решают..." },
+      { from: 48, icon: Brain,    label: "Синтезатор обрабатывает ответы..." },
+      { from: 68, icon: GitMerge, label: "Финальная проверка и форматирование..." },
+      { from: 75, icon: Sparkles, label: "Финализирую решение..." },
     ];
     for (let i = stages.length - 1; i >= 0; i--) {
       if (p >= stages[i].from) return stages[i];
@@ -411,7 +425,11 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl font-bold text-violet-300 tabular-nums">{solveProgress}%</span>
+                    {solveProgress >= 75 ? (
+                      <RefreshCw className="h-6 w-6 text-violet-400 animate-spin" />
+                    ) : (
+                      <span className="text-2xl font-bold text-violet-300 tabular-nums">{solveProgress}%</span>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => refetch()} className="h-8 w-8 p-0 rounded-lg hover:bg-white/8">
                       <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -422,7 +440,7 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                 <div className="px-5 py-3.5 space-y-3">
                   <div className="h-2 rounded-full bg-violet-500/10 border border-violet-500/10 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-blue-500 transition-all duration-700 ease-out"
+                      className={`h-full rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-blue-500 transition-all duration-700 ease-out ${solveProgress >= 75 ? "animate-pulse" : ""}`}
                       style={{ width: `${solveProgress}%` }}
                     />
                   </div>
@@ -432,9 +450,9 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                     {[
                       { p: 0,  icon: Cpu,      tip: "Анализ" },
                       { p: 25, icon: Zap,      tip: "Воркеры" },
-                      { p: 50, icon: Brain,    tip: "Синтез" },
-                      { p: 75, icon: GitMerge, tip: "Проверка" },
-                      { p: 95, icon: Sparkles, tip: "Готово" },
+                      { p: 48, icon: Brain,    tip: "Синтез" },
+                      { p: 68, icon: GitMerge, tip: "Проверка" },
+                      { p: 75, icon: Sparkles, tip: "Готово" },
                     ].map(({ p, icon: Icon, tip }) => (
                       <div key={p} className="flex flex-col items-center gap-1 min-w-0" aria-label={tip}>
                         <div className={`w-6 h-6 rounded-full border flex items-center justify-center transition-all duration-500 ${
@@ -523,6 +541,19 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                     disabled={origChecking}
                     className="text-muted-foreground hover:text-white gap-2">
                     {origChecking ? <><RefreshCw className="h-4 w-4 animate-spin" /> Проверяю…</> : <><ShieldCheck className="h-4 w-4" /> Оригинальность</>}
+                  </Button>
+                  <Button variant="ghost" size="sm"
+                    onClick={() => {
+                      sessionStorage.setItem("uniqueness:handoff", JSON.stringify({
+                        text: task.result,
+                        source: "task",
+                        topic: task.title,
+                        ts: Date.now(),
+                      }));
+                      setLocation("/uniqueness");
+                    }}
+                    className="text-violet-400 hover:text-white hover:bg-violet-500/10 gap-2">
+                    <Wand2 className="h-4 w-4" /> Улучшить
                   </Button>
                 </div>
               </CardHeader>
@@ -705,11 +736,10 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                           <img src={img.url} alt={img.prompt} className="w-full h-auto" />
                           <div className="flex items-center justify-between gap-2 px-3 py-2 bg-black/30">
                             <p className="text-xs text-slate-400 truncate flex-1">{img.prompt}</p>
-                            <a href={img.url} download={`image-${i + 1}.png`} target="_blank" rel="noopener noreferrer">
-                              <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs text-slate-400 hover:text-white">
-                                <Download className="h-3.5 w-3.5" /> Скачать
-                              </Button>
-                            </a>
+                            <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs text-slate-400 hover:text-white"
+                              onClick={() => handleDownloadImage(img.url, `image-${i + 1}.png`)}>
+                              <Download className="h-3.5 w-3.5" /> Скачать
+                            </Button>
                           </div>
                         </div>
                       ))}

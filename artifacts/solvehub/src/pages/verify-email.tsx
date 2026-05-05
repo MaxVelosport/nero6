@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { CheckCircle, XCircle, Loader2, Mail } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetMeQueryKey } from "@workspace/api-client-react";
 
 const BASE_URL_VE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -11,6 +13,7 @@ export default function VerifyEmailPage() {
   const token = params.get("token");
   const [state, setState] = useState<State>("loading");
   const [bonus, setBonus] = useState<number>(0);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!token) { setState("invalid"); return; }
@@ -25,6 +28,7 @@ export default function VerifyEmailPage() {
         if (r.ok) {
           setBonus(Number(data.bonus ?? 0));
           setState(data.alreadyVerified ? "already" : "success");
+          queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
         } else if (data.error === "token_expired") {
           setState("expired");
         } else {

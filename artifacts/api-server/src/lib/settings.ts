@@ -120,7 +120,7 @@ export const PRICING_DEFAULTS: PricingConfig = {
     rewriteMedium: 5,    // ₽5 — стандарт
     rewriteDeep:   9,    // ₽9 — глубокий рерайт (GPT-4o)
     minCheck:      5,
-    minRewrite:    15,
+    minRewrite:    5,
   },
   payments: {
     starter:          { type: "credit",       price: 199, credit: 320,  label: "Стартовый",     description: "Для первого знакомства" },

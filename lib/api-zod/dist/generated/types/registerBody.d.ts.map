@@ -1,0 +1,1 @@
+{"version":3,"file":"registerBody.d.ts","sourceRoot":"","sources":["../../../src/generated/types/registerBody.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,OAAO,KAAK,EAAE,0BAA0B,EAAE,MAAM,8BAA8B,CAAC;AAE/E,MAAM,WAAW,YAAY;IAC3B;;;OAGG;IACH,IAAI,EAAE,MAAM,CAAC;IACb,KAAK,EAAE,MAAM,CAAC;IACd,mBAAmB;IACnB,QAAQ,EAAE,MAAM,CAAC;IACjB,cAAc,CAAC,EAAE,0BAA0B,CAAC;CAC7C"}

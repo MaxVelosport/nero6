@@ -33,6 +33,7 @@ router.get("/tiers", (_req, res) => {
 });
 
 router.post("/generate", requireAuth, async (req, res) => {
+  let refund: (reason: string) => Promise<void> = async () => {};
   try {
     const user = (req as any).user;
     const { tier, subject, topic, difficulty, educationLevel } = req.body || {};
@@ -146,7 +147,7 @@ router.post("/generate", requireAuth, async (req, res) => {
     }
 
     // Хелпер на возврат денег при ошибке после списания.
-    const refund = async (reason: string) => {
+    refund = async (reason: string) => {
       if (cost <= 0) return;
       try {
         if (sb) {

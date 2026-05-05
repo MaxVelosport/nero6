@@ -3,6 +3,8 @@ import katex from "katex";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import type { Components } from "react-markdown";
 import {
   ResponsiveContainer,
@@ -89,33 +91,7 @@ function segmentContent(raw: string): Segment[] {
       }
     }
 
-    // $$ ... $$ block math
-    if (ch === "$" && raw[pos + 1] === "$") {
-      const end = raw.indexOf("$$", pos + 2);
-      if (end !== -1) {
-        flush(pos);
-        segments.push({ kind: "block", formula: raw.slice(pos + 2, end).trim() });
-        pos = end + 2;
-        textStart = pos;
-        continue;
-      }
-    }
-
-    // $ ... $ inline math — only if candidate contains actual LaTeX commands
-    if (ch === "$" && raw[pos + 1] !== "$") {
-      const end = raw.indexOf("$", pos + 1);
-      if (end !== -1 && end > pos + 1) {
-        const candidate = raw.slice(pos + 1, end);
-        // Only treat as math if it contains LaTeX commands (backslash + letters) or ^ _ superscript/subscript
-        if (/\\[a-zA-Z]|[_^{}]/.test(candidate)) {
-          flush(pos);
-          segments.push({ kind: "inline", formula: candidate.trim() });
-          pos = end + 1;
-          textStart = pos;
-          continue;
-        }
-      }
-    }
+    // $...$ and $$...$$ are handled by remark-math + rehype-katex inside ReactMarkdown
 
     // \begin{...}...\end{...}
     if (ch === "\\" && raw.slice(pos, pos + 7) === "\\begin") {
@@ -499,7 +475,8 @@ export function RenderMessage({ content }: { content: string }) {
         return (
           <ReactMarkdown
             key={idx}
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, output: "htmlAndMathml" }]]}
             components={markdownComponents}
           >
             {seg.value}
