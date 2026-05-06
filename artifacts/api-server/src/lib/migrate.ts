@@ -132,9 +132,11 @@ const SUPABASE_COLUMN_CHECKS: Array<{ table: string; column: string; fix: string
     column: "external_payment_id",
     fix: `-- 1. Колонка для идемпотентности платежей ЮKassa
 ALTER TABLE "Neyrozachet_transactions" ADD COLUMN IF NOT EXISTS external_payment_id TEXT;
+-- Non-partial index: ON CONFLICT (external_payment_id) требует точного совпадения.
+-- Partial index (WHERE IS NOT NULL) не матчится без WHERE в ON CONFLICT.
+-- NULL-значения уникальны в PostgreSQL, поэтому существующие строки без payment_id не конфликтуют.
 CREATE UNIQUE INDEX IF NOT EXISTS neyrozachet_transactions_external_payment_id_uniq
-  ON "Neyrozachet_transactions" (external_payment_id)
-  WHERE external_payment_id IS NOT NULL;
+  ON "Neyrozachet_transactions" (external_payment_id);
 
 -- 2. Атомарная функция зачисления платежа: одна транзакция,
 --    защита от двойного зачисления через UNIQUE-индекс выше.
@@ -161,6 +163,49 @@ BEGIN
 
   UPDATE "Neyrozachet_users" SET balance = COALESCE(balance, 0) + p_amount
    WHERE id = p_user_id RETURNING balance INTO v_balance;
+
+  RETURN QUERY SELECT TRUE, v_balance;
+END;
+$$ LANGUAGE plpgsql;`,
+  },
+  {
+    table: "Neyrozachet_transactions",
+    column: "external_refund_id",
+    fix: `-- Колонка и индекс для идемпотентности возвратов ЮKassa
+ALTER TABLE "Neyrozachet_transactions" ADD COLUMN IF NOT EXISTS external_refund_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS neyrozachet_transactions_external_refund_id_uniq
+  ON "Neyrozachet_transactions" (external_refund_id);
+
+-- Атомарная функция списания при возврате: amount хранится отрицательным (тип 'refund'),
+-- баланс снижается до 0 включительно (GREATEST).
+CREATE OR REPLACE FUNCTION refund_yookassa_payment(
+  p_user_id             BIGINT,
+  p_amount              NUMERIC,
+  p_description         TEXT,
+  p_external_refund_id  TEXT,
+  p_external_payment_id TEXT
+) RETURNS TABLE(applied BOOLEAN, new_balance NUMERIC) AS $$
+DECLARE
+  v_inserted INT;
+  v_balance  NUMERIC;
+BEGIN
+  INSERT INTO "Neyrozachet_transactions"
+    (user_id, type, amount, description, external_payment_id, external_refund_id)
+  VALUES
+    (p_user_id, 'refund', -p_amount, p_description, p_external_payment_id, p_external_refund_id)
+  ON CONFLICT (external_refund_id) DO NOTHING;
+  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+
+  IF v_inserted = 0 THEN
+    SELECT balance INTO v_balance FROM "Neyrozachet_users" WHERE id = p_user_id;
+    RETURN QUERY SELECT FALSE, v_balance;
+    RETURN;
+  END IF;
+
+  UPDATE "Neyrozachet_users"
+    SET balance = GREATEST(COALESCE(balance, 0) - p_amount, 0)
+  WHERE id = p_user_id
+  RETURNING balance INTO v_balance;
 
   RETURN QUERY SELECT TRUE, v_balance;
 END;

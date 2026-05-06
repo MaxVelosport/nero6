@@ -164,6 +164,66 @@ async function creditPayment(payment: YookassaPayment):
 }
 
 /**
+ * Атомарно списывает кредиты при возврате ЮKassa.
+ * Ищет оригинальную topup-транзакцию, вычисляет пропорцию кредитов и вызывает RPC.
+ */
+async function debitRefund(
+  refundId: string,
+  paymentId: string,
+  refundRub: number,
+): Promise<
+  | { ok: true; alreadyApplied: boolean; userId: number; creditsDeducted: number; newBalance: number }
+  | { ok: false; reason: string }
+> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return { ok: false, reason: "supabase_not_configured" };
+
+  const { data: tx, error: txErr } = await sb
+    .from("Neyrozachet_transactions")
+    .select("user_id, amount")
+    .eq("external_payment_id", paymentId)
+    .eq("type", "topup")
+    .maybeSingle();
+  if (txErr) throw new Error(`DB lookup: ${txErr.message}`);
+  if (!tx) return { ok: false, reason: `no_topup_transaction: payment_id=${paymentId}` };
+
+  const userId = Number(tx.user_id);
+  const originalCredits = Number(tx.amount);
+
+  // getPayment может бросить — перехватывается в вызывающем коде (→ 500)
+  const origPayment = await getPayment(paymentId);
+  const originalRub = Number(origPayment.amount?.value);
+  if (!Number.isFinite(originalRub) || originalRub <= 0) {
+    return { ok: false, reason: `invalid_original_amount: "${origPayment.amount?.value}"` };
+  }
+
+  const creditsToDeduct = Math.round((refundRub / originalRub) * originalCredits);
+  if (creditsToDeduct <= 0) {
+    return { ok: false, reason: `credits_zero: refund=${refundRub}₽ original=${originalRub}₽ credits=${originalCredits}` };
+  }
+
+  const paymentShort = paymentId.slice(0, 8);
+  const description = `Возврат платежа №${paymentShort} (${refundRub}₽ → -${creditsToDeduct} кредитов)`;
+
+  const { data, error } = await sb.rpc("refund_yookassa_payment", {
+    p_user_id: userId,
+    p_amount: creditsToDeduct,
+    p_description: description,
+    p_external_refund_id: refundId,
+    p_external_payment_id: paymentId,
+  });
+  if (error) throw new Error(`RPC refund_yookassa_payment: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    ok: true,
+    alreadyApplied: !row?.applied,
+    userId,
+    creditsDeducted: creditsToDeduct,
+    newBalance: Number(row?.new_balance ?? 0),
+  };
+}
+
+/**
  * Официальные диапазоны IP-адресов ЮKassa, с которых приходят уведомления.
  * https://yookassa.ru/developers/using-api/webhooks#ip
  * Любой запрос на /webhook извне этих сетей будет отвергнут с 403.
@@ -226,42 +286,68 @@ router.post("/webhook", async (req, res) => {
     return;
   }
 
-  const event = req.body as { event?: string; object?: { id?: string } };
+  const event = req.body as { event?: string; object?: Record<string, any> };
 
-  if (event?.event !== "payment.succeeded" || !event.object?.id) {
+  if (event?.event === "payment.succeeded" && event.object?.id) {
+    const paymentId = String(event.object.id);
+
+    try {
+      const payment = await getPayment(paymentId);
+
+      if (payment.status !== "succeeded" || !payment.paid) {
+        console.log(`[payments/webhook] платёж не успешен: ${paymentId} status=${payment.status} paid=${payment.paid}`);
+        res.status(200).json({ received: true, status: payment.status });
+        return;
+      }
+
+      const result = await creditPayment(payment);
+      if (!result.ok) {
+        console.error(`[payments/webhook] отклонено: ${paymentId} ${result.reason}`);
+        res.status(200).json({ received: true, rejected: true });
+        return;
+      }
+
+      if (result.alreadyApplied) {
+        console.log(`[payments/webhook] ⏭  уже зачислено ранее: ${paymentId}`);
+      } else if (result.kind === "subscription") {
+        console.log(`[payments/webhook] ✅ подписка активирована: payment=${paymentId} user=${payment.metadata?.user_id} until=${result.subscriptionUntil}`);
+      } else {
+        console.log(`[payments/webhook] ✅ зачислено: payment=${paymentId} user=${payment.metadata?.user_id} pkg=${payment.metadata?.package_key} new_balance=${result.newBalance}`);
+      }
+      res.status(200).json({ received: true });
+    } catch (e: any) {
+      console.error(`[payments/webhook] ошибка обработки ${paymentId}:`, e?.message || e);
+      res.status(500).json({ error: "processing_failed" });
+    }
+
+  } else if (event?.event === "refund.succeeded") {
+    const refundId  = String(event.object?.id ?? "");
+    const paymentId = String(event.object?.payment_id ?? "");
+    const refundRub = Number(event.object?.amount?.value);
+
+    if (!refundId || !paymentId || !Number.isFinite(refundRub) || refundRub <= 0) {
+      console.warn("[refund.succeeded] некорректный объект события:", JSON.stringify(event.object));
+      res.status(200).json({ received: true, ignored: true });
+      return;
+    }
+
+    try {
+      const result = await debitRefund(refundId, paymentId, refundRub);
+      if (!result.ok) {
+        console.warn(`[refund.succeeded] не применён: refund=${refundId} payment=${paymentId} reason=${result.reason}`);
+      } else if (result.alreadyApplied) {
+        console.log(`[refund.succeeded] ⏭  уже применён: refund=${refundId}`);
+      } else {
+        console.log(`[refund.succeeded] ✅ списано: refund=${refundId} payment=${paymentId} user=${result.userId} -${result.creditsDeducted} кредитов new_balance=${result.newBalance}`);
+      }
+      res.status(200).json({ received: true });
+    } catch (e: any) {
+      console.error(`[refund.succeeded] ошибка: refund=${refundId} payment=${paymentId}:`, e?.message || e);
+      res.status(500).json({ error: "processing_failed" });
+    }
+
+  } else {
     res.status(200).json({ received: true, ignored: true });
-    return;
-  }
-
-  const paymentId = event.object.id;
-
-  try {
-    const payment = await getPayment(paymentId);
-
-    if (payment.status !== "succeeded" || !payment.paid) {
-      console.log(`[payments/webhook] платёж не успешен: ${paymentId} status=${payment.status} paid=${payment.paid}`);
-      res.status(200).json({ received: true, status: payment.status });
-      return;
-    }
-
-    const result = await creditPayment(payment);
-    if (!result.ok) {
-      console.error(`[payments/webhook] отклонено: ${paymentId} ${result.reason}`);
-      res.status(200).json({ received: true, rejected: true });
-      return;
-    }
-
-    if (result.alreadyApplied) {
-      console.log(`[payments/webhook] ⏭  уже зачислено ранее: ${paymentId}`);
-    } else if (result.kind === "subscription") {
-      console.log(`[payments/webhook] ✅ подписка активирована: payment=${paymentId} user=${payment.metadata?.user_id} until=${result.subscriptionUntil}`);
-    } else {
-      console.log(`[payments/webhook] ✅ зачислено: payment=${paymentId} user=${payment.metadata?.user_id} pkg=${payment.metadata?.package_key} new_balance=${result.newBalance}`);
-    }
-    res.status(200).json({ received: true });
-  } catch (e: any) {
-    console.error(`[payments/webhook] ошибка обработки ${paymentId}:`, e?.message || e);
-    res.status(500).json({ error: "processing_failed" });
   }
 });
 
