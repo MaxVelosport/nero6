@@ -1255,6 +1255,8 @@ export default function LandingPage() {
               <a href="/offer" className="hover:text-slate-300 transition-colors">Оферта</a>
               <a href="/privacy" className="hover:text-slate-300 transition-colors">Конфиденциальность</a>
               <a href="/refund" className="hover:text-slate-300 transition-colors">Возврат</a>
+              <a href="/cookies" className="hover:text-slate-300 transition-colors">Cookies</a>
+              <a href="/ai-disclaimer" className="hover:text-slate-300 transition-colors">Об ИИ</a>
               <a href="mailto:support@neurozachet.ru" className="hover:text-slate-300 transition-colors">Поддержка</a>
             </div>
           </div>

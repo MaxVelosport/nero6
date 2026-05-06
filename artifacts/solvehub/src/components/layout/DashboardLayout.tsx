@@ -249,6 +249,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <a href="/privacy" className="hover:text-foreground transition-colors">Конфиденциальность</a>
               <a href="/refund" className="hover:text-foreground transition-colors">Возврат</a>
               <a href="/refund-request" className="hover:text-foreground transition-colors">Заявка на возврат</a>
+              <a href="/cookies" className="hover:text-foreground transition-colors">Cookies</a>
+              <a href="/ai-disclaimer" className="hover:text-foreground transition-colors">Об ИИ</a>
               <a href="mailto:support@neurozachet.ru" className="hover:text-foreground transition-colors">support@neurozachet.ru</a>
             </div>
             <div className="text-[10px] text-muted-foreground/70 leading-relaxed">
