@@ -226,6 +226,16 @@ $$ LANGUAGE plpgsql;`,
     fix: `-- Колонка для подписки «Месяц безлимит»
 ALTER TABLE "Neyrozachet_users" ADD COLUMN IF NOT EXISTS subscription_until TIMESTAMPTZ;`,
   },
+  {
+    table: "Neyrozachet_users",
+    column: "terms_accepted_at",
+    fix: `-- Фиксация согласия пользователя с офертой и политикой ПД (152-ФЗ)
+ALTER TABLE "Neyrozachet_users"
+  ADD COLUMN IF NOT EXISTS terms_accepted_at       TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS first_terms_accepted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS terms_version           TEXT,
+  ADD COLUMN IF NOT EXISTS consent_ip              TEXT;`,
+  },
 ];
 
 async function checkSupabaseSchema(): Promise<void> {

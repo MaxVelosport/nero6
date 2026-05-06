@@ -8,6 +8,8 @@ import { getWelcomeBonus, getVerifyBonus } from "../lib/settings.js";
 
 const router = Router();
 
+const TERMS_VERSION = "2026-05-06";
+
 // ── IP Rate limiting для регистрации ──────────────────────────────────────────
 const regAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_REG_PER_HOUR = 3;
@@ -95,6 +97,19 @@ router.post("/register", async (req, res) => {
         res.status(500).json({ error: "internal_error", message: "Failed to create user" });
         return;
       }
+
+      // Записываем факт согласия с документами (152-ФЗ).
+      // Выполняется отдельным UPDATE — если колонки ещё не мигрированы,
+      // ошибка подавляется и регистрация проходит без потери данных.
+      const consentAt = new Date().toISOString();
+      await sb.from("Neyrozachet_users").update({
+        terms_accepted_at: consentAt,
+        first_terms_accepted_at: consentAt,
+        terms_version: TERMS_VERSION,
+        consent_ip: ip,
+      }).eq("id", user.id).then(({ error: ce }) => {
+        if (ce) req.log.warn({ ce }, "consent columns not yet migrated — skipped");
+      });
 
       if (welcomeBonus > 0) {
         await sb.from("Neyrozachet_transactions").insert({
