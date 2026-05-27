@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Зависимости (устанавливаются внутри образа)
+node_modules
+**/node_modules
+
+# Переменные окружения
+.env
+.env.local
+.env.*.local
+
+# Build outputs (собираются внутри образа)
+artifacts/*/dist
+lib/*/dist
+
+# Runtime data
+logs
+uploads
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# pnpm store
+.pnpm-store
+.pnpm-debug.log
+
+# Replit
+.local
+.breakpoints
+.config
+.upm
+replit.nix
+replit.md
+
+# Документация (не нужна в образе)
+*.md
+BUGS.md
+PROJECT_OVERVIEW.md
+
+# Бэкапы
+backups

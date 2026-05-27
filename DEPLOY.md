@@ -1,7 +1,7 @@
 # DEPLOY.md — Runbook деплоя НейроЗачёт
 
 > VPS: Beget Москва · Пользователь: `deploy` · Домен: `neurozachet.ru`
-> Обновлён: 2026-05-05
+> Обновлён: 2026-05-27
 
 ---
 
@@ -157,4 +157,87 @@ pm2 resurrect
 # или
 pm2 start ecosystem.config.cjs
 pm2 save
+```
+
+---
+
+## Docker — установка и первый запуск
+
+> Используется вместо PM2 для запуска бэкенда в изолированном контейнере.
+> Nginx и фронтенд остаются на хосте без изменений.
+
+### 1. Установить Docker (однократно)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io
+sudo systemctl enable --now docker
+sudo usermod -aG docker deploy   # чтобы не писать sudo каждый раз
+# после usermod — выйти и зайти снова по SSH
+```
+
+### 2. Собрать образ
+
+```bash
+cd ~/projects/nero6
+docker build -t nero6-api .
+```
+
+Первая сборка занимает 5–10 минут (скачивает node:20-alpine, устанавливает pnpm).
+Повторные сборки — быстрее из-за кэширования слоёв.
+
+### 3. Запустить контейнер
+
+```bash
+# Один раз вручную (для теста):
+docker run -d \
+  --name nero6-api \
+  -p 3001:3001 \
+  --env-file /home/deploy/projects/nero6/.env \
+  -v /home/deploy/data/uploads:/app/uploads \
+  --restart unless-stopped \
+  nero6-api
+
+# Или через docker-compose:
+docker compose up -d
+```
+
+### 4. Проверка
+
+```bash
+docker ps                          # контейнер должен быть Up
+docker logs nero6-api --tail 30    # логи запуска
+curl http://localhost:3001/api/healthz  # {"status":"ok"}
+```
+
+### 5. Обновление после изменений в коде
+
+```bash
+cd ~/projects/nero6
+git pull
+
+# Фронтенд (nginx подхватывает сам):
+pnpm --filter @workspace/solvehub run build
+
+# Бэкенд — пересобрать образ и перезапустить:
+docker build -t nero6-api .
+docker stop nero6-api && docker rm nero6-api
+docker run -d \
+  --name nero6-api \
+  -p 3001:3001 \
+  --env-file /home/deploy/projects/nero6/.env \
+  -v /home/deploy/data/uploads:/app/uploads \
+  --restart unless-stopped \
+  nero6-api
+
+# Или через compose:
+docker compose up -d --build
+```
+
+### 6. Отладка контейнера
+
+```bash
+docker logs nero6-api -f            # стримить логи
+docker exec -it nero6-api sh        # войти в контейнер
+docker inspect nero6-api            # полная конфигурация
 ```
